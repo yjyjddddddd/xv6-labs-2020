@@ -8,7 +8,7 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct proc proc[NPROC];//全局进程数组
 
 struct proc *initproc;
 
@@ -22,6 +22,8 @@ static void freeproc(struct proc *p);
 extern char trampoline[]; // trampoline.S
 
 // initialize the proc table at boot time.
+
+
 void
 procinit(void)
 {
@@ -127,6 +129,8 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  p->kama_syscall_trace = 0;         //创建新进程的时候，kama_syscall_trace 设置为默认值0
+  
   return p;
 }
 
@@ -296,6 +300,8 @@ fork(void)
   np->state = RUNNABLE;
 
   release(&np->lock);
+
+  np->kama_syscall_trace = p ->kama_syscall_trace; //子进程继承父进程的syscall_trace，把获取的参数也要传给子进程
 
   return pid;
 }
@@ -692,4 +698,22 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+//统计处于活动状态的进程
+void
+kama_procnum(uint64* dst)
+{
+  *dst = 0;
+  struct  proc* p;
+  for(p = proc;p<&proc[NPROC];p++)
+  {
+    if(p->state != UNUSED)
+    {
+      (*dst)++;
+    }
+  }
+
+
+  
 }

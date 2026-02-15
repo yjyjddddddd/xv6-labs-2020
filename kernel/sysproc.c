@@ -6,9 +6,47 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-
+#include "sysinfo.h"
+//收集系统信息
 uint64
-sys_exit(void)
+sys_sysinfo(void)
+{
+  struct sysinfo info;
+  kama_freebytes(&info.freemem);	// 获取空闲内存    
+  kama_procnum(&info.nproc);		// 获取进程数量
+  
+  //获取用户虚拟地址
+  uint64 dstaddr;
+  //提取系统调用的第 0 个参数的值（这个值是一个内存地址 / 指针），并把这个地址值存入 dstaddr 变量中
+  argaddr(0,&dstaddr);
+
+  //从内核空间拷贝数据到用户空间
+  if (copyout(myproc()->pagetable,dstaddr,(char*)&info, sizeof info) < 0)
+  {
+    return -1;
+  }
+  return 0;
+  
+}
+
+
+// 当前进程的系统调用跟踪掩码
+uint64
+sys_trace(void)
+{
+  int mask;
+
+  if (argint(0,&mask) < 0) //获取用户程序传入的数据 尝试读取第 0 号参数，转成整数存入 mask；
+  {
+    return -1;
+  }
+  myproc()->kama_syscall_trace = mask;    // 设置调用进程的kama_syscall_trace掩码mask
+  return 0;
+
+  
+}
+
+int sys_exit(void)//20260210
 {
   int n;
   if(argint(0, &n) < 0)
