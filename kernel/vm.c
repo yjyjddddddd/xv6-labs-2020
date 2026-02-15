@@ -277,9 +277,14 @@ freewalk(pagetable_t pagetable)
   // there are 2^9 = 512 PTEs in a page table.
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
+    //无读写执行权限（说明是指向下级页表的中间节点，而非物理内存）
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
       // this PTE points to a lower-level page table.
+      //PTE2PA：是 xv6 定义的宏（不是函数），作用是剥离 PTE 中的权限位，只提取其中记录的物理地址部分。
       uint64 child = PTE2PA(pte);
+      //ypedef uint64* pagetable_t;  // 本质是“指向uint64的指针”
+      //pagetable_t 代表 “页表的起始地址（指针）”：
+      //把child（物理地址，uint64类型）强制转换为pagetable_t，就是把这个数值当成 “页表指针”，
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){

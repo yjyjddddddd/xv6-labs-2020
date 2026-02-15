@@ -84,7 +84,10 @@ kalloc(void)
 }
 
 void kama_freebytes(uint64* dst) 
-{    
+{   
+  //所有空闲的物理页会被组织成一个单向链表（freelist）
+  //kmem 是管理这个链表的全局结构体，kmem.freelist 是链表头指针；
+
   *dst = 0;    
   struct run* p = kmem.freelist;
 

@@ -706,6 +706,7 @@ kama_procnum(uint64* dst)
 {
   *dst = 0;
   struct  proc* p;
+  // p = proc ,这个proc 是proc+0，所以也可以等于p = &proc[0]
   for(p = proc;p<&proc[NPROC];p++)
   {
     if(p->state != UNUSED)
