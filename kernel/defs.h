@@ -180,7 +180,10 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             kama_vmprint(pagetable_t pagetable);         //打印页表内容函数声明
 int             kama_pgtblprint(pagetable_t pagetable, int depth);
-pagetable_t     kama_kvminit_newpgtbl();
+pagetable_t     kama_kvminit_newpgtbl(void);
+void            kama_kvm_map_pagetable(pagetable_t pgtbl);
+void            kama_kvm_free_kernelpgtbl(pagetable_t pgtbl);
+
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);
