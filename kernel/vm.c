@@ -18,34 +18,71 @@ extern char trampoline[]; // trampoline.S
 /*
  * create a direct-map page table for the kernel.
  */
+int kama_pgtblprint(pagetable_t pagetable, int depth) {    
+    // 注释：一个页表包含 512 个 PTE（2^9），对应 RISC-V 4KB 页大小（4096/8=512）
+    for (int i = 0; i < 512; i++) {  // 遍历当前页表的所有 512 个 PTE
+        pte_t pte = pagetable[i];    // 取出第 i 个页表项（PTE）
+        
+        if (pte & PTE_V) {  // 仅处理“有效”的 PTE（无效 PTE 跳过不打印）
+            // 打印缩进：depth 代表当前页表层级，层级越高缩进越多，直观区分页表层级
+            printf("..");            // 基础缩进（所有层级都有的前缀）
+            for (int j = 0;j < depth;++j)  // 根据层级追加缩进
+                printf(" ..");        
+            // 打印核心信息：PTE 索引i、PTE 本身的值、PTE 指向的物理地址（剥离权限位后）
+            printf("%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+
+            // 判断是否为“中间节点”（指向子页表，而非物理内存的叶子节点）
+            if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {                
+                // 注释：该 PTE 指向更低层级的页表（无读写执行权限，是目录节点）
+                uint64 child = PTE2PA(pte);  // 提取子页表的物理地址
+                // 递归打印子页表，层级+1（缩进更多）
+                kama_pgtblprint((pagetable_t)child, depth + 1);
+            }
+        }
+    }
+    return 0;
+}
+
+int kama_vmprint(pagetable_t pagetable) {    
+    // 先打印当前要打印的页表本身的起始地址（根页表地址）
+    printf("page table %p\n", pagetable);    
+    // 调用递归函数，初始层级 depth=0（根页表层级）
+    return kama_pgtblprint(pagetable, 0);
+}
 void
 kvminit()
 {
-  kernel_pagetable = (pagetable_t) kalloc();
-  memset(kernel_pagetable, 0, PGSIZE);
-
-  // uart registers
-  kvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W);
-
-  // virtio mmio disk interface
-  kvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
-
-  // CLINT
-  kvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W);
-
-  // PLIC
-  kvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W);
-
-  // map kernel text executable and read-only.
-  kvmmap(KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
-
-  // map kernel data and the physical RAM we'll make use of.
-  kvmmap((uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
-
-  // map the trampoline for trap entry/exit to
-  // the highest virtual address in the kernel.
-  kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  kernel_pagetable = kama_kvminit_newpgtbl();
+  
 }
+
+pagetable_t kama_kvminit_newpgtbl()
+{
+  pagetable_t pgtbl = (pagetable_t)kalloc();//que:kalloc生成的是什么类型的数据
+  memset(pgtbl,0,PGSIZE);
+  kama_kvm_map_pagetable(pgtbl);//que:这个函数作用
+  return pgtbl;
+}
+
+void kama_kvm_map_pagetable(pagetable_t pgtbl) {    
+    // 将各种内核需要的 direct mapping 添加到页表 pgtbl 中        
+    // uart registers    
+    kvmmap(pgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+    // virtio mmio disk interface    
+    kvmmap(pgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+    // CLINT    
+    kvmmap(pgtbl, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+    // PLIC    
+    kvmmap(pgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+    // map kernel text executable and read-only.    
+    kvmmap(pgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+    // map kernel data and the physical RAM we'll make use of.    
+    kvmmap(pgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+    // map the trampoline for trap entry/exit to    
+    // the highest virtual address in the kernel.    
+    kvmmap(pgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+}
+
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
@@ -114,10 +151,12 @@ walkaddr(pagetable_t pagetable, uint64 va)
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
+
+// 将某个虚拟地址映射到某个物理地址（添加第一个参数）
 void
-kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
+kvmmap(pagetable_t pgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
+  if(mappages(pgtbl, va, sz, pa, perm) != 0)
     panic("kvmmap");
 }
 
@@ -125,19 +164,21 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 // a physical address. only needed for
 // addresses on the stack.
 // assumes va is page aligned.
+
+// kvmpa 将虚拟地址翻译为物理地址（添加第一个参数）
 uint64
-kvmpa(uint64 va)
+kvmpa(pagetable_t pgtbl,uint64 va)
 {
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
-  if(pte == 0)
+  pte = walk(pgtbl, va, 0);  //kernel_pagetable 改为参数pgtbl
+  if(pte == 0)              //que:walk函数详细了解
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
     panic("kvmpa");
-  pa = PTE2PA(*pte);
+  pa = PTE2PA(*pte);//从有效的 PTE 中提取物理页框的基地址，页对齐，最后 12 位为 0
   return pa+off;
 }
 
