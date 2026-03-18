@@ -77,8 +77,29 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+   if(which_dev == 2){
+  
+  // 如果开启了 alarm，且没有正在执行 handler
+  if(p->ticks > 0 && p->alarm_tf == 0){
+    p->ticks_cnt++;
+    // 达到触发条件
+    if(p->ticks_cnt == p->ticks){
+      // 分配内存备份 trapframe
+      p->alarm_tf = kalloc();
+      if(p->alarm_tf == 0){
+        panic("alarm kalloc failed");
+      }
+      // 备份用户现场
+      *p->alarm_tf = *p->trapframe;
+      // 重置计数器
+      p->ticks_cnt = 0;
+      // 关键：让用户态返回到 handler 函数执行
+      p->trapframe->epc = p->handler;
+    }
+  }
+
+  yield(); // 原有的进程调度保留
+}
 
   usertrapret();
 }

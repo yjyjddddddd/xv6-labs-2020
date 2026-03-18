@@ -1,5 +1,5 @@
 // which hart (core) is this?
-static inline uint64
+static inline int
 r_mhartid()
 {
   uint64 x;
@@ -310,6 +310,15 @@ r_ra()
   asm volatile("mv %0, ra" : "=r" (x) );
   return x;
 }
+
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r" (x) );
+  return x;
+}
+
 
 // flush the TLB.
 static inline void

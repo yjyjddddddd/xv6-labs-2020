@@ -70,6 +70,7 @@ sys_sleep(void)
     sleep(&ticks, &tickslock);
   }
   release(&tickslock);
+  backtrace();
   return 0;
 }
 
@@ -94,4 +95,34 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_sigalarm(void)
+{
+  int ticks;
+  uint64 handler;
+  // 读取用户传入的参数
+  if(argint(0, &ticks) < 0 || argaddr(1, &handler) < 0)
+    return -1;
+
+  struct  proc *p = myproc();
+  p->ticks = ticks;
+  p->handler = handler;
+  p->ticks_cnt = 0;
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+   struct proc *p = myproc();
+  
+  // 从备份的 trapframe 恢复用户寄存器
+  *p->trapframe = *p->alarm_tf;
+  // 释放备份内存
+  kfree(p->alarm_tf);
+  p->alarm_tf = 0;
+  
+  return 0;
 }
