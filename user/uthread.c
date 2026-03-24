@@ -10,15 +10,33 @@
 #define STACK_SIZE  8192
 #define MAX_THREAD  4
 
+struct context {    
+  uint64 ra;    
+  uint64 sp;
+    // callee-saved    
+  uint64 s0;    
+  uint64 s1;    
+  uint64 s2;    
+  uint64 s3;    
+  uint64 s4;    
+  uint64 s5;    
+  uint64 s6;    
+  uint64 s7;    
+  uint64 s8;    
+  uint64 s9;    
+  uint64 s10;    
+  uint64 s11;
+};  
 
 struct thread {
   char       stack[STACK_SIZE]; /* the thread's stack */
   int        state;             /* FREE, RUNNING, RUNNABLE */
+  struct     context context;//在线程就结构体中添加context结构体
 
 };
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
-extern void thread_switch(uint64, uint64);
+extern void thread_switch(struct context* old, struct context* new);
               
 void 
 thread_init(void)
@@ -63,6 +81,8 @@ thread_schedule(void)
      * Invoke thread_switch to switch from t to next_thread:
      * thread_switch(??, ??);
      */
+    printf("调度切换：旧线程=%p → 新线程=%p\n", t, next_thread);
+    thread_switch(&t->context,&next_thread->context);
   } else
     next_thread = 0;
 }
@@ -77,11 +97,17 @@ thread_create(void (*func)())
   }
   t->state = RUNNABLE;
   // YOUR CODE HERE
+   // 返回地址,thread_switch线程切换执行完后返回到ra，设置成线程函数func，就可以切换后执行func  
+  t->context.ra = (uint64)func;
+  // 栈指针，将线程的栈指针指向其独立的栈，栈的生长是从高地址到低地址，所以要将 sp 设置为指向 stack 的最高地址  
+  t->context.sp = (uint64)&t->stack + (STACK_SIZE - 1);
+  printf("创建线程: %p, ra=%p, sp=%p\n", t, func, t->context.sp);
 }
 
 void 
 thread_yield(void)
 {
+  printf("线程 %p 主动让出CPU\n", current_thread);
   current_thread->state = RUNNABLE;
   thread_schedule();
 }
